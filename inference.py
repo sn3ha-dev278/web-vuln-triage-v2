@@ -13,9 +13,9 @@ from openai import OpenAI
 from web_vuln_triage.client import WebVulnTriageEnv
 from web_vuln_triage.models import WebVulnTriageAction
 
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY = os.environ["HF_TOKEN"]
+MODEL_NAME = os.environ["MODEL_NAME"]
 IMAGE_NAME = os.getenv("IMAGE_NAME") or "web_vuln_triage:latest"
 
 TASK_NAME = "web_vulnerability_triage"
@@ -117,12 +117,27 @@ def get_model_response(
         text = text.strip()
         return text if text else "Medium"
     except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        print(f"[ERROR] Model request failed: {exc}", flush=True)
         return "Medium"
 
 
 async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(
+    base_url=API_BASE_URL,
+    api_key=API_KEY,
+)
+    
+       
+    try:
+        _ = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=5,
+        )
+        print("[DEBUG] Warmup LLM call successful", flush=True)
+    except Exception as e:
+        print(f"[ERROR] Warmup LLM call failed: {e}", flush=True)
+        raise
 
     # Connect to locally running server
     try:
