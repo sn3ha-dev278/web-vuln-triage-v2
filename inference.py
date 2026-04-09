@@ -42,6 +42,11 @@ RULES:
 """
 
 
+def _clamp_score(value: float) -> float:
+    """Ensure score is strictly between 0 and 1 (exclusive)."""
+    return round(max(0.01, min(0.99, value)), 3)
+
+
 def log_start(task: str, env: str, model: str):
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
@@ -102,7 +107,6 @@ async def main():
         api_key=API_KEY,
     )
 
-    
     try:
         print("[DEBUG] Performing test LLM call...", flush=True)
         client.chat.completions.create(
@@ -129,6 +133,9 @@ async def main():
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
+    # FIX: initialise score to a valid clamped value, not 0.0
+    score = 0.01
+    success = False
 
     log_start(TASK_NAME, BENCHMARK, MODEL_NAME)
 
@@ -141,7 +148,6 @@ async def main():
 
             obs = result.observation
 
-            
             action_text = get_model_response(
                 client,
                 obs.task_description,
@@ -167,19 +173,15 @@ async def main():
 
         raw_score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD else 0.0
 
-        if raw_score <= 0.0:
-            score = 0.01
-        elif raw_score >= 1.0:
-            score = 0.99
-        else:
-            score = raw_score
-
+        # FIX: always clamp to strictly (0, 1) — never allow 0.0 or 1.0
+        score = _clamp_score(raw_score)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as e:
         print(f"[ERROR] Execution failed: {e}", flush=True)
         success = False
-        score = 0.0
+        # FIX: was 0.0 (invalid) — must be strictly > 0
+        score = 0.01
 
     finally:
         try:
