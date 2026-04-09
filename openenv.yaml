@@ -3,45 +3,43 @@ name: web_vuln_triage
 type: space
 runtime: fastapi
 app: server.app:app
-port: 8000
-
+port: 7860
 title: Web Vulnerability Triage Environment
 description: >
   A real-world RL environment where an AI agent acts as a security analyst.
   The agent must classify vulnerability severity, detect false positives in
   scanner reports, and prioritize vulnerabilities for remediation.
-
 tags:
   - security
   - cybersecurity
   - vulnerability-triage
   - real-world
   - openenv
-
 tasks:
   - id: task1
     name: Severity Classification
     difficulty: easy
     description: >
-      Classify a vulnerability report as Critical, High, Medium, or Low severity.
+      Classify a vulnerability report as Critical, High, Medium, or Low
+      severity based on CVSS score, exploitability, and impact.
     grader:
       type: deterministic
       endpoint: /grader
-
   - id: task2
     name: False Positive Detection
     difficulty: medium
     description: >
-      Determine whether a scanner finding is real or false positive.
+      Given a scanner finding with additional context, determine whether
+      it is a real vulnerability or a false positive.
     grader:
       type: deterministic
       endpoint: /grader
-
   - id: task3
     name: Remediation Prioritization
     difficulty: hard
     description: >
-      Prioritize vulnerabilities based on risk and impact.
+      Given 5 vulnerabilities with different risk profiles, produce a
+      prioritized remediation order from most to least urgent.
     grader:
       type: deterministic
       endpoint: /grader
