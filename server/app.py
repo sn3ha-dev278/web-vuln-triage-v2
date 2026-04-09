@@ -1,6 +1,21 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
+from fastapi import FastAPI
 
+app = FastAPI()
+
+@app.post("/reset")
+async def reset(request: dict):
+    return {}
+
+@app.post("/step")
+async def step(request: dict):
+    return {}
+
+
+@app.post("/grader")
+async def grader(request: dict):
+    return {"score": 0.5}
 """
 FastAPI application for the Web Vuln Triage Environment.
 """
