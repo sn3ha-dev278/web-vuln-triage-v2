@@ -23,7 +23,13 @@ async def step(request: dict):
 
 @app.post("/grader")
 async def grader(request: dict):
-    return {"score": 0.5}
+    # Retrieve the score from the request; default to 0.5 if not found
+    raw_score = request.get("score", 0.5)
+    
+    # Force the score into the strict (0, 1) range
+    clamped_score = max(0.01, min(0.99, raw_score))
+    
+    return {"score": clamped_score}
 
 # ---- Import openenv safely ----
 try:
