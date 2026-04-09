@@ -1,5 +1,4 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
+
 from fastapi import FastAPI
 
 app = FastAPI()
@@ -20,7 +19,7 @@ async def grader(request: dict):
 FastAPI application for the Web Vuln Triage Environment.
 """
 
-# ---- Import openenv safely ----
+
 try:
     from openenv.core.env_server.http_server import create_app
 except Exception as e:  # pragma: no cover
@@ -31,9 +30,9 @@ except Exception as e:  # pragma: no cover
     ) from e
 
 
-# ---- Handle imports robustly (works in Docker + local) ----
+
 try:
-    # When running as package (recommended)
+    
     from web_vuln_triage.models import (
         WebVulnTriageAction,
         WebVulnTriageObservation,
@@ -43,12 +42,12 @@ try:
     )
 
 except ModuleNotFoundError:
-    # Fallback when running from inside project root
+  
     from models import WebVulnTriageAction, WebVulnTriageObservation
     from server.web_vuln_triage_environment import WebVulnTriageEnvironment
 
 
-# ---- Create FastAPI app ----
+
 app = create_app(
     WebVulnTriageEnvironment,
     WebVulnTriageAction,
@@ -58,7 +57,7 @@ app = create_app(
 )
 
 
-# ---- Entry point ----
+
 def main(host: str = "0.0.0.0", port: int = 8000):
     """
     Run the server locally.
@@ -72,6 +71,6 @@ def main(host: str = "0.0.0.0", port: int = 8000):
     uvicorn.run(app, host=host, port=port, reload=True)
 
 
-# ---- CLI support ----
+
 if __name__ == "__main__":
     main()
