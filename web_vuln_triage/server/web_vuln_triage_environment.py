@@ -7,20 +7,18 @@ remediation — tasks that security engineers perform daily.
 """
 
 from uuid import uuid4
-from typing import Optional
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
 try:
     from ..models import WebVulnTriageAction, WebVulnTriageObservation
 except ImportError:
-    from models import WebVulnTriageAction, WebVulnTriageObservation
+    try:
+        from models import WebVulnTriageAction, WebVulnTriageObservation
+    except ImportError:
+        from web_vuln_triage.models import WebVulnTriageAction, WebVulnTriageObservation
 
 
-# ---------------------------------------------------------------------------
-# Task 1 Data: Severity Classification
-# Easy task — classify a single vulnerability as Critical/High/Medium/Low
-# ---------------------------------------------------------------------------
 TASK1_SCENARIOS = [
     {
         "vulnerability_data": (
@@ -100,10 +98,6 @@ TASK1_SCENARIOS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Task 2 Data: False Positive Detection
-# Medium task — decide if a finding is real or false_positive
-# ---------------------------------------------------------------------------
 TASK2_SCENARIOS = [
     {
         "vulnerability_data": (
@@ -172,15 +166,11 @@ TASK2_SCENARIOS = [
             "Affected asset: Main web application TLS"
         ),
         "correct_answer": "false_positive",
-        "explanation": "Cipher supported but never used, zero sessions in 90 days = acceptable risk / false positive in practice"
+        "explanation": "Cipher supported but never used, zero sessions in 90 days = false positive in practice"
     },
 ]
 
 
-# ---------------------------------------------------------------------------
-# Task 3 Data: Prioritized Remediation Planning
-# Hard task — rank 5 vulnerabilities in correct remediation order
-# ---------------------------------------------------------------------------
 TASK3_SCENARIOS = [
     {
         "vulnerability_data": (
@@ -237,49 +227,43 @@ TASK3_SCENARIOS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Scoring helpers
-# ---------------------------------------------------------------------------
+
+def _clamp(value: float) -> float:
+    """Ensure score is strictly between 0 and 1."""
+    return round(max(0.01, min(0.99, value)), 3)
+
 
 def _score_task1(response: str, correct: str) -> float:
-    """Exact match for severity classification."""
     cleaned = response.strip().capitalize()
     if cleaned == correct:
-        return 1.0
-    # Partial credit for adjacent severity levels
+        return _clamp(0.95)
     severity_order = ["Low", "Medium", "High", "Critical"]
     if cleaned in severity_order and correct in severity_order:
         distance = abs(severity_order.index(cleaned) - severity_order.index(correct))
         if distance == 1:
-            return 0.4
-    return 0.0
+            return _clamp(0.4)
+        if distance == 2:
+            return _clamp(0.2)
+    return _clamp(0.05)
 
 
 def _score_task2(response: str, correct: str) -> float:
-    """Exact match for false positive detection."""
     cleaned = response.strip().lower().replace("-", "_")
     if cleaned == correct:
-        return 1.0
-    return 0.0
+        return _clamp(0.95)
+    return _clamp(0.05)
 
 
 def _score_task3(response: str, correct_order: list) -> float:
-    """
-    Partial credit scoring for remediation prioritization.
-    - Full marks if order is perfect
-    - Partial marks based on how many items are in the correct relative order
-    """
-    # Parse response
     raw_ids = [v.strip().upper() for v in response.replace(" ", "").split(",")]
     valid_ids = [v for v in raw_ids if v in correct_order]
 
     if not valid_ids:
-        return 0.0
+        return _clamp(0.05)
 
     if valid_ids == correct_order:
-        return 1.0
+        return _clamp(0.95)
 
-    # Score based on correct relative orderings (pairwise)
     total_pairs = 0
     correct_pairs = 0
     n = len(correct_order)
@@ -292,26 +276,21 @@ def _score_task3(response: str, correct_order: list) -> float:
                     correct_pairs += 1
 
     if total_pairs == 0:
-        return 0.0
+        return _clamp(0.05)
 
-    # Scale: perfect pairwise = 0.9 max (1.0 only for exact match)
-    return round((correct_pairs / total_pairs) * 0.9, 3)
+    raw = (correct_pairs / total_pairs) * 0.85
+    return _clamp(raw)
 
 
-# ---------------------------------------------------------------------------
-# Main Environment Class
-# ---------------------------------------------------------------------------
 
 class WebVulnTriageEnvironment(Environment):
     """
     Web Vulnerability Triage Environment.
 
-    An AI agent acts as a security analyst and must:
-    - Task 1 (Easy):   Classify vulnerability severity (Critical/High/Medium/Low)
-    - Task 2 (Medium): Detect false positives in scanner findings
-    - Task 3 (Hard):   Prioritize a list of vulnerabilities for remediation
-
-    Reward is shaped across attempts — the agent gets up to 3 tries per scenario.
+    Tasks:
+    - Task 1 (Easy):   Classify vulnerability severity
+    - Task 2 (Medium): Detect false positives
+    - Task 3 (Hard):   Prioritize vulnerabilities for remediation
     """
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
@@ -326,7 +305,6 @@ class WebVulnTriageEnvironment(Environment):
         self._done: bool = False
 
     def reset(self) -> WebVulnTriageObservation:
-        """Reset and start at Task 1, Scenario 0."""
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._task_id = "task1"
         self._scenario_index = 0
@@ -335,11 +313,10 @@ class WebVulnTriageEnvironment(Environment):
         self._done = False
 
         scenario = TASK1_SCENARIOS[0]
-
         return WebVulnTriageObservation(
             task_id="task1",
             task_description=(
-                "TASK 1 — Severity Classification\n"
+                "TASK 1 - Severity Classification\n"
                 "Analyze the vulnerability report below and classify its severity.\n"
                 "Reply with exactly one word: Critical, High, Medium, or Low."
             ),
@@ -348,11 +325,10 @@ class WebVulnTriageEnvironment(Environment):
             current_score=0.0,
             attempt_number=0,
             done=False,
-            reward=0.0,
+            reward=0.05,
         )
 
     def step(self, action: WebVulnTriageAction) -> WebVulnTriageObservation:
-        """Process agent response and return next observation with reward."""
         self._state.step_count += 1
         self._attempt += 1
 
@@ -365,53 +341,49 @@ class WebVulnTriageEnvironment(Environment):
                 current_score=self._current_score,
                 attempt_number=self._attempt,
                 done=True,
-                reward=0.0,
+                reward=0.05,
             )
 
         response = action.response.strip()
-        reward = 0.0
+        raw_score = 0.05
         feedback = ""
 
         # --- Score the current attempt ---
         if self._task_id == "task1":
-            scenarios = TASK1_SCENARIOS
-            scenario = scenarios[self._scenario_index]
+            scenario = TASK1_SCENARIOS[self._scenario_index]
             raw_score = _score_task1(response, scenario["correct_answer"])
-            # Decay reward for later attempts
-            reward = raw_score * max(0.4, 1.0 - (self._attempt - 1) * 0.3)
-            if raw_score == 1.0:
+            if raw_score >= 0.9:
                 feedback = f"Correct! {scenario['explanation']}"
-            elif raw_score > 0:
+            elif raw_score >= 0.3:
                 feedback = f"Partially correct (adjacent severity). {scenario['explanation']}"
             else:
                 feedback = f"Incorrect. {scenario['explanation']}"
 
         elif self._task_id == "task2":
-            scenarios = TASK2_SCENARIOS
-            scenario = scenarios[self._scenario_index]
+            scenario = TASK2_SCENARIOS[self._scenario_index]
             raw_score = _score_task2(response, scenario["correct_answer"])
-            reward = raw_score * max(0.4, 1.0 - (self._attempt - 1) * 0.3)
-            if raw_score == 1.0:
+            if raw_score >= 0.9:
                 feedback = f"Correct! {scenario['explanation']}"
             else:
                 feedback = f"Incorrect. {scenario['explanation']}"
 
         elif self._task_id == "task3":
-            scenarios = TASK3_SCENARIOS
-            scenario = scenarios[self._scenario_index]
+            scenario = TASK3_SCENARIOS[self._scenario_index]
             raw_score = _score_task3(response, scenario["correct_answer"])
-            reward = raw_score * max(0.4, 1.0 - (self._attempt - 1) * 0.3)
-            if raw_score == 1.0:
+            if raw_score >= 0.9:
                 feedback = f"Perfect prioritization! {scenario['explanation']}"
-            elif raw_score > 0:
+            elif raw_score >= 0.3:
                 feedback = f"Partial credit ({raw_score:.2f}). {scenario['explanation']}"
             else:
                 feedback = f"Incorrect order. {scenario['explanation']}"
 
+        # Apply attempt decay and clamp
+        decay = max(0.4, 1.0 - (self._attempt - 1) * 0.3)
+        reward = _clamp(raw_score * decay)
         self._current_score += reward
 
-        # --- Advance to next scenario or task ---
-        advance = (raw_score == 1.0) or (self._attempt >= self._max_attempts)
+        # Advance if correct or max attempts reached
+        advance = (raw_score >= 0.9) or (self._attempt >= self._max_attempts)
 
         if advance:
             self._attempt = 0
@@ -421,25 +393,25 @@ class WebVulnTriageEnvironment(Environment):
             next_obs.current_score = self._current_score
             return next_obs
 
-        # --- Same scenario, try again ---
+        # Same scenario, try again
         if self._task_id == "task1":
             scenario = TASK1_SCENARIOS[self._scenario_index]
             desc = (
-                "TASK 1 — Severity Classification\n"
+                "TASK 1 - Severity Classification\n"
                 "Analyze the vulnerability report below and classify its severity.\n"
                 "Reply with exactly one word: Critical, High, Medium, or Low."
             )
         elif self._task_id == "task2":
             scenario = TASK2_SCENARIOS[self._scenario_index]
             desc = (
-                "TASK 2 — False Positive Detection\n"
+                "TASK 2 - False Positive Detection\n"
                 "Analyze the finding below. Is it a real vulnerability or a false positive?\n"
                 "Reply with exactly one word: real or false_positive."
             )
         else:
             scenario = TASK3_SCENARIOS[self._scenario_index]
             desc = (
-                "TASK 3 — Remediation Prioritization\n"
+                "TASK 3 - Remediation Prioritization\n"
                 "Prioritize the vulnerabilities below from most to least urgent.\n"
                 "Reply with ONLY a comma-separated list of IDs. Example: V2,V3,V1,V4,V5"
             )
@@ -456,8 +428,6 @@ class WebVulnTriageEnvironment(Environment):
         )
 
     def _advance_scenario(self) -> WebVulnTriageObservation:
-        """Move to next scenario or next task."""
-
         if self._task_id == "task1":
             self._scenario_index += 1
             if self._scenario_index < len(TASK1_SCENARIOS):
@@ -465,7 +435,7 @@ class WebVulnTriageEnvironment(Environment):
                 return WebVulnTriageObservation(
                     task_id="task1",
                     task_description=(
-                        "TASK 1 — Severity Classification\n"
+                        "TASK 1 - Severity Classification\n"
                         "Analyze the vulnerability report below and classify its severity.\n"
                         "Reply with exactly one word: Critical, High, Medium, or Low."
                     ),
@@ -474,17 +444,16 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.0,
+                    reward=0.05,
                 )
             else:
-                # Move to task 2
                 self._task_id = "task2"
                 self._scenario_index = 0
                 scenario = TASK2_SCENARIOS[0]
                 return WebVulnTriageObservation(
                     task_id="task2",
                     task_description=(
-                        "TASK 2 — False Positive Detection\n"
+                        "TASK 2 - False Positive Detection\n"
                         "Analyze the finding below. Is it a real vulnerability or a false positive?\n"
                         "Reply with exactly one word: real or false_positive."
                     ),
@@ -493,7 +462,7 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.0,
+                    reward=0.05,
                 )
 
         elif self._task_id == "task2":
@@ -503,7 +472,7 @@ class WebVulnTriageEnvironment(Environment):
                 return WebVulnTriageObservation(
                     task_id="task2",
                     task_description=(
-                        "TASK 2 — False Positive Detection\n"
+                        "TASK 2 - False Positive Detection\n"
                         "Analyze the finding below. Is it a real vulnerability or a false positive?\n"
                         "Reply with exactly one word: real or false_positive."
                     ),
@@ -512,17 +481,16 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.0,
+                    reward=0.05,
                 )
             else:
-                # Move to task 3
                 self._task_id = "task3"
                 self._scenario_index = 0
                 scenario = TASK3_SCENARIOS[0]
                 return WebVulnTriageObservation(
                     task_id="task3",
                     task_description=(
-                        "TASK 3 — Remediation Prioritization\n"
+                        "TASK 3 - Remediation Prioritization\n"
                         "Prioritize the vulnerabilities below from most to least urgent.\n"
                         "Reply with ONLY a comma-separated list of IDs. Example: V2,V3,V1,V4,V5"
                     ),
@@ -531,7 +499,7 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.0,
+                    reward=0.05,
                 )
 
         else:  # task3
@@ -541,7 +509,7 @@ class WebVulnTriageEnvironment(Environment):
                 return WebVulnTriageObservation(
                     task_id="task3",
                     task_description=(
-                        "TASK 3 — Remediation Prioritization\n"
+                        "TASK 3 - Remediation Prioritization\n"
                         "Prioritize the vulnerabilities below from most to least urgent.\n"
                         "Reply with ONLY a comma-separated list of IDs. Example: V2,V3,V1,V4,V5"
                     ),
@@ -550,10 +518,9 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.0,
+                    reward=0.05,
                 )
             else:
-                # All tasks complete
                 self._done = True
                 return WebVulnTriageObservation(
                     task_id="task3",
@@ -566,7 +533,7 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=True,
-                    reward=0.0,
+                    reward=0.05,
                 )
 
     @property
