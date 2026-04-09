@@ -10,6 +10,12 @@ from uuid import uuid4
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
+TASK_REGISTRY = [
+    {"task_id": "task1"},
+    {"task_id": "task2"},
+    {"task_id": "task3"},
+]
+
 try:
     from ..models import WebVulnTriageAction, WebVulnTriageObservation
 except ImportError:
@@ -352,7 +358,7 @@ class WebVulnTriageEnvironment(Environment):
         # --- Score the current attempt ---
         if self._task_id == "task1":
             scenario = TASK1_SCENARIOS[self._scenario_index]
-            raw_score = _score_task1(response, scenario["correct_answer"])
+            raw_score = self.grade_task(self._task_id, response, scenario)
             if raw_score >= 0.9:
                 feedback = f"Correct! {scenario['explanation']}"
             elif raw_score >= 0.3:
@@ -362,7 +368,7 @@ class WebVulnTriageEnvironment(Environment):
 
         elif self._task_id == "task2":
             scenario = TASK2_SCENARIOS[self._scenario_index]
-            raw_score = _score_task2(response, scenario["correct_answer"])
+            raw_score = self.grade_task(self._task_id, response, scenario)
             if raw_score >= 0.9:
                 feedback = f"Correct! {scenario['explanation']}"
             else:
@@ -370,7 +376,7 @@ class WebVulnTriageEnvironment(Environment):
 
         elif self._task_id == "task3":
             scenario = TASK3_SCENARIOS[self._scenario_index]
-            raw_score = _score_task3(response, scenario["correct_answer"])
+            raw_score = self.grade_task(self._task_id, response, scenario)
             if raw_score >= 0.9:
                 feedback = f"Perfect prioritization! {scenario['explanation']}"
             elif raw_score >= 0.3:
@@ -427,6 +433,18 @@ class WebVulnTriageEnvironment(Environment):
             done=False,
             reward=reward,
         )
+    
+    def get_task_definitions(self):
+        return TASK_REGISTRY
+    
+    def grade_task(self, task_id: str, response: str, scenario: dict) -> float:
+        if task_id == "task1":
+            return _score_task1(response, scenario["correct_answer"])
+        elif task_id == "task2":
+            return _score_task2(response, scenario["correct_answer"])
+        elif task_id == "task3":
+            return _score_task3(response, scenario["correct_answer"])
+        return 0.05
 
     def _advance_scenario(self) -> WebVulnTriageObservation:
         if self._task_id == "task1":
