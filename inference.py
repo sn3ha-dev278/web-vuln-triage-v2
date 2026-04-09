@@ -13,10 +13,10 @@ from openai import OpenAI
 from web_vuln_triage.client import WebVulnTriageEnv
 from web_vuln_triage.models import WebVulnTriageAction
 
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-IMAGE_NAME = os.getenv("IMAGE_NAME") or "web_vuln_triage:latest"
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or ""
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+IMAGE_NAME = os.environ.get("IMAGE_NAME", "web_vuln_triage:latest")
 
 TASK_NAME = "web_vulnerability_triage"
 BENCHMARK = "web_vuln_triage_env"
