@@ -235,7 +235,8 @@ TASK3_SCENARIOS = [
 
 def _clamp(value: float) -> float:
     """Ensure score is strictly between 0 and 1 (exclusive)."""
-    return round(max(0.01, min(0.99, value)), 3)
+    # Use 0.01 and 0.99 to stay safely away from the boundaries 0.0 and 1.0
+    return max(0.01, min(0.99, value))
 
 
 def _score_task1(response: str, correct: str) -> float:
@@ -306,7 +307,7 @@ class WebVulnTriageEnvironment(Environment):
         self._scenario_index: int = 0
         self._attempt: int = 0
         self._max_attempts: int = 3
-        self._current_score: float = 0.0
+        self._current_score: float = 0.01
         self._done: bool = False
 
     def reset(self) -> WebVulnTriageObservation:
@@ -314,7 +315,7 @@ class WebVulnTriageEnvironment(Environment):
         self._task_id = "task1"
         self._scenario_index = 0
         self._attempt = 0
-        self._current_score = 0.0
+        self._current_score = 0.01
         self._done = False
 
         scenario = TASK1_SCENARIOS[0]
@@ -327,7 +328,7 @@ class WebVulnTriageEnvironment(Environment):
             ),
             vulnerability_data=scenario["vulnerability_data"],
             feedback="New episode started. Good luck!",
-            current_score=0.0,
+            current_score=0.01,
             attempt_number=0,
             done=False,
             # FIX: use a valid clamped reward, not a magic hardcoded value
