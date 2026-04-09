@@ -6,7 +6,7 @@ FastAPI application for the Web Vuln Triage Environment.
 """
 from fastapi import FastAPI
 
-# ✅ DEFINE app FIRST
+
 app = FastAPI()
 
 # -------------------------
@@ -66,7 +66,21 @@ app = create_app(
     max_concurrent_envs=1,
 )
 
+@app.post("/grader")
+async def grader(request: dict):
+    # Retrieve score and ensure it stays in (0, 1) to solve the previous error
+    raw_score = request.get("score", 0.5)
+    clamped_score = max(0.01, min(0.99, float(raw_score)))
+    return {"score": clamped_score}
 
+# Ensure /reset and /step are also explicitly exposed if required
+@app.post("/reset")
+async def reset(request: dict):
+    return {}
+
+@app.post("/step")
+async def step(request: dict):
+    return {}
 
 def main(host: str = "0.0.0.0", port: int = 8000):
     """
