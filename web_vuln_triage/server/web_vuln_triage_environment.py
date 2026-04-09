@@ -227,9 +227,8 @@ TASK3_SCENARIOS = [
 ]
 
 
-
 def _clamp(value: float) -> float:
-    """Ensure score is strictly between 0 and 1."""
+    """Ensure score is strictly between 0 and 1 (exclusive)."""
     return round(max(0.01, min(0.99, value)), 3)
 
 
@@ -278,9 +277,9 @@ def _score_task3(response: str, correct_order: list) -> float:
     if total_pairs == 0:
         return _clamp(0.05)
 
+    # FIX: raw can be 0.0 when all pairs are wrong — _clamp raises it to 0.01
     raw = (correct_pairs / total_pairs) * 0.85
     return _clamp(raw)
-
 
 
 class WebVulnTriageEnvironment(Environment):
@@ -325,7 +324,8 @@ class WebVulnTriageEnvironment(Environment):
             current_score=0.0,
             attempt_number=0,
             done=False,
-            reward=0.05,
+            # FIX: use a valid clamped reward, not a magic hardcoded value
+            reward=_clamp(0.05),
         )
 
     def step(self, action: WebVulnTriageAction) -> WebVulnTriageObservation:
@@ -341,7 +341,8 @@ class WebVulnTriageEnvironment(Environment):
                 current_score=self._current_score,
                 attempt_number=self._attempt,
                 done=True,
-                reward=0.05,
+                # FIX: was hardcoded 0.05 — keep consistent via _clamp
+                reward=_clamp(0.05),
             )
 
         response = action.response.strip()
@@ -377,7 +378,7 @@ class WebVulnTriageEnvironment(Environment):
             else:
                 feedback = f"Incorrect order. {scenario['explanation']}"
 
-        # Apply attempt decay and clamp
+        # Apply attempt decay — ensure reward is always strictly in (0, 1)
         decay = max(0.4, 1.0 - (self._attempt - 1) * 0.3)
         reward = _clamp(raw_score * decay)
         self._current_score += reward
@@ -444,7 +445,7 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.05,
+                    reward=_clamp(0.05),
                 )
             else:
                 self._task_id = "task2"
@@ -462,7 +463,7 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.05,
+                    reward=_clamp(0.05),
                 )
 
         elif self._task_id == "task2":
@@ -481,7 +482,7 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.05,
+                    reward=_clamp(0.05),
                 )
             else:
                 self._task_id = "task3"
@@ -499,7 +500,7 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.05,
+                    reward=_clamp(0.05),
                 )
 
         else:  # task3
@@ -518,7 +519,7 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=False,
-                    reward=0.05,
+                    reward=_clamp(0.05),
                 )
             else:
                 self._done = True
@@ -533,7 +534,8 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=True,
-                    reward=0.05,
+                    # FIX: was hardcoded 0.05 — route through _clamp for consistency
+                    reward=_clamp(0.05),
                 )
 
     @property
