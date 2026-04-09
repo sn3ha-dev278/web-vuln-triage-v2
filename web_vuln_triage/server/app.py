@@ -4,33 +4,7 @@
 """
 FastAPI application for the Web Vuln Triage Environment.
 """
-from fastapi import FastAPI
 from fastapi import Request
-
-
-app = FastAPI()
-
-# -------------------------
-# Existing endpoints
-# -------------------------
-
-@app.post("/reset")
-async def reset(request: dict):
-    return {}
-
-@app.post("/step")
-async def step(request: dict):
-    return {}
-
-@app.post("/grader")
-async def grader(request: dict):
-    # Retrieve the score from the request; default to 0.5 if not found
-    raw_score = request.get("score", 0.5)
-    
-    # Force the score into the strict (0, 1) range
-    clamped_score = max(0.01, min(0.99, raw_score))
-    
-    return {"score": clamped_score}
 
 # ---- Import openenv safely ----
 try:
@@ -41,7 +15,6 @@ except Exception as e:  # pragma: no cover
         "Install dependencies with:\n\n"
         "    uv sync\n"
     ) from e
-
 
 try:
     # When running as package (recommended)
@@ -59,6 +32,7 @@ except ModuleNotFoundError:
     from server.web_vuln_triage_environment import WebVulnTriageEnvironment
 
 
+# 1. Create the base app via OpenEnv (this automatically handles /reset and /step correctly)
 app = create_app(
     WebVulnTriageEnvironment,
     WebVulnTriageAction,
@@ -67,6 +41,7 @@ app = create_app(
     max_concurrent_envs=1,
 )
 
+# 2. Attach our custom, bulletproof grader endpoint AFTER create_app
 @app.post("/grader")
 @app.get("/grader")
 async def grader_endpoint(request: Request):
@@ -86,18 +61,11 @@ async def grader_endpoint(request: Request):
     
     return {"score": clamped_score}
 
-# Ensure /reset and /step are also explicitly exposed if required
-@app.post("/reset")
-async def reset(request: dict):
-    return {}
-
-@app.post("/step")
-async def step(request: dict):
-    return {}
 
 def main(host: str = "0.0.0.0", port: int = 8000):
     """
     Run the server locally.
+
     Examples:
         python -m web_vuln_triage.server.app
         uvicorn web_vuln_triage.server.app:app --reload
