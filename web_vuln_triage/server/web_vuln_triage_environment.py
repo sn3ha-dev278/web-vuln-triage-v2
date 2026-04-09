@@ -11,9 +11,24 @@ from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
 TASK_REGISTRY = [
-    {"task_id": "task1", "grader_type": "deterministic"},
-    {"task_id": "task2", "grader_type": "deterministic"},
-    {"task_id": "task3", "grader_type": "deterministic"},
+    {
+        "id": "task1",
+        "task_id": "task1",
+        "name": "Severity Classification",
+        "grader": {"type": "deterministic", "endpoint": "/grader"}
+    },
+    {
+        "id": "task2",
+        "task_id": "task2",
+        "name": "False Positive Detection",
+        "grader": {"type": "deterministic", "endpoint": "/grader"}
+    },
+    {
+        "id": "task3",
+        "task_id": "task3",
+        "name": "Remediation Prioritization",
+        "grader": {"type": "deterministic", "endpoint": "/grader"}
+    },
 ]
 
 try:
