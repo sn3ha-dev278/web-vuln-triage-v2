@@ -165,8 +165,15 @@ async def main():
             if done:
                 break
 
-        score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD else 0.0
-        score = max(0.0, min(score, 1.0))
+        raw_score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD else 0.0
+
+        if raw_score <= 0.0:
+            score = 0.01
+        elif raw_score >= 1.0:
+            score = 0.99
+        else:
+            score = raw_score
+
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as e:
