@@ -10,25 +10,24 @@ from uuid import uuid4
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
+# THIS IS THE CRITICAL FIX FOR "Not enough tasks with graders"
+# The platform requires the "id" key and the "grader" dictionary here.
 TASK_REGISTRY = [
     {
         "id": "task1",
-        "task_id": "task1",
         "name": "Severity Classification",
         "grader": {"type": "deterministic", "endpoint": "/grader"}
     },
     {
         "id": "task2",
-        "task_id": "task2",
         "name": "False Positive Detection",
         "grader": {"type": "deterministic", "endpoint": "/grader"}
     },
     {
         "id": "task3",
-        "task_id": "task3",
         "name": "Remediation Prioritization",
         "grader": {"type": "deterministic", "endpoint": "/grader"}
-    },
+    }
 ]
 
 try:
@@ -118,7 +117,6 @@ TASK1_SCENARIOS = [
     },
 ]
 
-
 TASK2_SCENARIOS = [
     {
         "vulnerability_data": (
@@ -191,7 +189,6 @@ TASK2_SCENARIOS = [
     },
 ]
 
-
 TASK3_SCENARIOS = [
     {
         "vulnerability_data": (
@@ -247,12 +244,9 @@ TASK3_SCENARIOS = [
     },
 ]
 
-
 def _clamp(value: float) -> float:
     """Ensure score is strictly between 0 and 1 (exclusive)."""
-    # Use 0.01 and 0.99 to stay safely away from the boundaries 0.0 and 1.0
-    return max(0.01, min(0.99, value))
-
+    return max(0.001, min(0.999, value))
 
 def _score_task1(response: str, correct: str) -> float:
     cleaned = response.strip().capitalize()
@@ -267,13 +261,11 @@ def _score_task1(response: str, correct: str) -> float:
             return _clamp(0.2)
     return _clamp(0.05)
 
-
 def _score_task2(response: str, correct: str) -> float:
     cleaned = response.strip().lower().replace("-", "_")
     if cleaned == correct:
         return _clamp(0.95)
     return _clamp(0.05)
-
 
 def _score_task3(response: str, correct_order: list) -> float:
     raw_ids = [v.strip().upper() for v in response.replace(" ", "").split(",")]
@@ -299,7 +291,6 @@ def _score_task3(response: str, correct_order: list) -> float:
     if total_pairs == 0:
         return _clamp(0.05)
 
-    # FIX: raw can be 0.0 when all pairs are wrong — _clamp raises it to 0.01
     raw = (correct_pairs / total_pairs) * 0.85
     return _clamp(raw)
 
@@ -307,13 +298,7 @@ def _score_task3(response: str, correct_order: list) -> float:
 class WebVulnTriageEnvironment(Environment):
     """
     Web Vulnerability Triage Environment.
-
-    Tasks:
-    - Task 1 (Easy):   Classify vulnerability severity
-    - Task 2 (Medium): Detect false positives
-    - Task 3 (Hard):   Prioritize vulnerabilities for remediation
     """
-
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
 
     def __init__(self):
@@ -322,7 +307,7 @@ class WebVulnTriageEnvironment(Environment):
         self._scenario_index: int = 0
         self._attempt: int = 0
         self._max_attempts: int = 3
-        self._current_score: float = 0.01
+        self._current_score: float = 0.001
         self._done: bool = False
 
     def reset(self) -> WebVulnTriageObservation:
@@ -330,7 +315,7 @@ class WebVulnTriageEnvironment(Environment):
         self._task_id = "task1"
         self._scenario_index = 0
         self._attempt = 0
-        self._current_score = 0.01
+        self._current_score = 0.001
         self._done = False
 
         scenario = TASK1_SCENARIOS[0]
@@ -343,10 +328,9 @@ class WebVulnTriageEnvironment(Environment):
             ),
             vulnerability_data=scenario["vulnerability_data"],
             feedback="New episode started. Good luck!",
-            current_score=0.01,
+            current_score=0.001,
             attempt_number=0,
             done=False,
-            # FIX: use a valid clamped reward, not a magic hardcoded value
             reward=_clamp(0.05),
         )
 
@@ -363,7 +347,6 @@ class WebVulnTriageEnvironment(Environment):
                 current_score=self._current_score,
                 attempt_number=self._attempt,
                 done=True,
-                # FIX: was hardcoded 0.05 — keep consistent via _clamp
                 reward=_clamp(0.05),
             )
 
@@ -371,7 +354,6 @@ class WebVulnTriageEnvironment(Environment):
         raw_score = 0.05
         feedback = ""
 
-        # --- Score the current attempt ---
         if self._task_id == "task1":
             scenario = TASK1_SCENARIOS[self._scenario_index]
             raw_score = self.grade_task(self._task_id, response, scenario)
@@ -400,12 +382,10 @@ class WebVulnTriageEnvironment(Environment):
             else:
                 feedback = f"Incorrect order. {scenario['explanation']}"
 
-        # Apply attempt decay — ensure reward is always strictly in (0, 1)
         decay = max(0.4, 1.0 - (self._attempt - 1) * 0.3)
         reward = _clamp(raw_score * decay)
         self._current_score += reward
 
-        # Advance if correct or max attempts reached
         advance = (raw_score >= 0.9) or (self._attempt >= self._max_attempts)
 
         if advance:
@@ -416,7 +396,6 @@ class WebVulnTriageEnvironment(Environment):
             next_obs.current_score = self._current_score
             return next_obs
 
-        # Same scenario, try again
         if self._task_id == "task1":
             scenario = TASK1_SCENARIOS[self._scenario_index]
             desc = (
@@ -537,7 +516,7 @@ class WebVulnTriageEnvironment(Environment):
                     reward=_clamp(0.05),
                 )
 
-        else:  # task3
+        else:
             self._scenario_index += 1
             if self._scenario_index < len(TASK3_SCENARIOS):
                 scenario = TASK3_SCENARIOS[self._scenario_index]
@@ -568,7 +547,6 @@ class WebVulnTriageEnvironment(Environment):
                     current_score=self._current_score,
                     attempt_number=0,
                     done=True,
-                    # FIX: was hardcoded 0.05 — route through _clamp for consistency
                     reward=_clamp(0.05),
                 )
 
