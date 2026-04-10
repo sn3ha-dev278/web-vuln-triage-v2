@@ -1,76 +1,122 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
+"""
+FastAPI application for the Web Vuln Triage Environment.
 
-from fastapi import Request
+ARCHITECTURE NOTE:
+  create_app() from openenv may lock routing after construction, so we build
+  the outer FastAPI app first, register /grader on it, then mount the openenv
+  app as a sub-application. The platform validator hits POST /grader on the
+  root — this guarantees it is always reachable.
+"""
+from fastapi import FastAPI
 
 try:
     from openenv.core.env_server.http_server import create_app
-except Exception as e:
-    raise ImportError("openenv is required. Install dependencies.") from e
+except Exception as e:  # pragma: no cover
+    raise ImportError(
+        "openenv is required for the web interface. "
+        "Install dependencies with:\n\n"
+        "    uv sync\n"
+    ) from e
 
 try:
-    from web_vuln_triage.models import WebVulnTriageAction, WebVulnTriageObservation
+    from web_vuln_triage.models import (
+        WebVulnTriageAction,
+        WebVulnTriageObservation,
+    )
     from web_vuln_triage.server.web_vuln_triage_environment import (
         WebVulnTriageEnvironment,
-        _score_task1, _score_task2, _score_task3,
-        TASK1_SCENARIOS, TASK2_SCENARIOS, TASK3_SCENARIOS
+        _score_task1,
+        _score_task2,
+        _score_task3,
+        _clamp,
+        TASK1_SCENARIOS,
+        TASK2_SCENARIOS,
+        TASK3_SCENARIOS,
     )
 except ModuleNotFoundError:
     from models import WebVulnTriageAction, WebVulnTriageObservation
     from server.web_vuln_triage_environment import (
         WebVulnTriageEnvironment,
-        _score_task1, _score_task2, _score_task3,
-        TASK1_SCENARIOS, TASK2_SCENARIOS, TASK3_SCENARIOS
+        _score_task1,
+        _score_task2,
+        _score_task3,
+        _clamp,
+        TASK1_SCENARIOS,
+        TASK2_SCENARIOS,
+        TASK3_SCENARIOS,
     )
 
-app = create_app(
+# ── 1. Build the outer app first ─────────────────────────────────────────────
+app = FastAPI(title="Web Vulnerability Triage Environment")
+
+
+# ── 2. Register /grader BEFORE mounting anything ─────────────────────────────
+@app.post("/grader")
+async def grader(request: dict):
+    """
+    Grader endpoint required by openenv.yaml.
+    Accepts:
+        { "task_id": "task1"|"task2"|"task3",
+          "response": "<agent answer>",
+          "scenario_index": 0 }
+    Returns:
+        { "score": <float strictly between 0 and 1> }
+    """
+    task_id = request.get("task_id", "task1")
+    response = request.get("response", "")
+    scenario_index = int(request.get("scenario_index", 0))
+
+    try:
+        if task_id == "task1":
+            idx = min(scenario_index, len(TASK1_SCENARIOS) - 1)
+            score = _score_task1(response, TASK1_SCENARIOS[idx]["correct_answer"])
+        elif task_id == "task2":
+            idx = min(scenario_index, len(TASK2_SCENARIOS) - 1)
+            score = _score_task2(response, TASK2_SCENARIOS[idx]["correct_answer"])
+        elif task_id == "task3":
+            idx = min(scenario_index, len(TASK3_SCENARIOS) - 1)
+            score = _score_task3(response, TASK3_SCENARIOS[idx]["correct_answer"])
+        else:
+            score = _clamp(0.05)
+    except Exception:
+        score = _clamp(0.05)
+
+    # Always clamp to strictly (0, 1)
+    return {"score": _clamp(score)}
+
+
+@app.get("/grader")
+async def grader_health():
+    """Health-check — lets the validator confirm the grader is live."""
+    return {"status": "ok", "tasks": ["task1", "task2", "task3"]}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+# ── 3. Mount openenv sub-app for /reset, /step, etc. ─────────────────────────
+_openenv_app = create_app(
     WebVulnTriageEnvironment,
     WebVulnTriageAction,
     WebVulnTriageObservation,
     env_name="web_vuln_triage",
     max_concurrent_envs=1,
 )
+app.mount("/env", _openenv_app)
 
-@app.post("/grader")
-@app.get("/grader")
-async def grader_endpoint(request: Request):
+
+def main(host: str = "0.0.0.0", port: int = 7860):
     """
-    Functional grader that satisfies Phase 2 Deep Validation.
-    It actively scores the payload the validator sends.
+    Run the server locally.
+    Examples:
+        python -m web_vuln_triage.server.app
+        uvicorn server.app:app --reload --port 7860
     """
-    try:
-        body = await request.json()
-    except Exception:
-        # Fallback for empty health checks
-        return {"score": 0.05}
-
-    # Extract task and response from the platform's test payload
-    task_id = body.get("task_id", body.get("id", "task1"))
-    response = body.get("response", body.get("answer", ""))
-    
-    raw_score = 0.05
-
-    try:
-        # Route to your environment's actual grading logic
-        if task_id == "task1":
-            raw_score = _score_task1(response, TASK1_SCENARIOS[0]["correct_answer"])
-        elif task_id == "task2":
-            raw_score = _score_task2(response, TASK2_SCENARIOS[0]["correct_answer"])
-        elif task_id == "task3":
-            raw_score = _score_task3(response, TASK3_SCENARIOS[0]["correct_answer"])
-        else:
-            raw_score = body.get("score", 0.05)
-    except Exception:
-        pass
-
-    # Strictly enforce the (0, 1) range required by Phase 1
-    clamped_score = max(0.01, min(0.99, float(raw_score)))
-    
-    return {"score": clamped_score}
-
-def main(host: str = "0.0.0.0", port: int = 8000):
     import uvicorn
-    uvicorn.run(app, host=host, port=port, reload=True)
+    uvicorn.run(app, host=host, port=port)
+
 
 if __name__ == "__main__":
     main()
